@@ -1,0 +1,6 @@
+{
+  "name": "Short Film Storyboard & Script Processor",
+  "description": "Biến kịch bản phim ngắn của bạn thành phân cảnh (tối đa 5s), sơ đồ nhân vật/bối cảnh, kịch bản hình ảnh (Storyboard) chi tiết, và gợi ý tạo phim/âm thanh bằng AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/* 
+  Override applet theme as requested:
+  - Main background is #505050
+  - Panel/Cards are #303030
+  - Other background elements are adjusted proportionally for contrast and visibility
+*/
+
+/* Main app background overrides */
+.bg-\[\#030712\] {
+  background-color: #505050 !important;
+}
+
+/* Header and Panel Card Background overrides */
+.bg-\[\#0B0F19\] {
+  background-color: #303030 !important;
+}
+
+/* Main text input and inner box overrides */
+.bg-\[\#111827\] {
+  background-color: #1e1e1e !important;
+}
+
+/* Inner dark panel sections */
+.bg-\[\#0F1722\] {
+  background-color: #242424 !important;
+}
+.bg-\[\#0F1722\]\/55 {
+  background-color: rgba(36, 36, 36, 0.55) !important;
+}
+.bg-\[\#0F1722\]\/50 {
+  background-color: rgba(36, 36, 36, 0.5) !important;
+}
+.bg-\[\#0F1722\]\/30 {
+  background-color: rgba(36, 36, 36, 0.3) !important;
+}
+.bg-\[\#0F1722\]\/40 {
+  background-color: rgba(36, 36, 36, 0.4) !important;
+}
+
+/* List elements, buttons and hover states */
+.bg-\[\#131924\] {
+  background-color: #2d2d2d !important;
+}
+.bg-\[\#131924\]:hover, .hover\:bg-\[\#131924\]:hover {
+  background-color: #3d3d3d !important;
+}
+
+.bg-\[\#161D30\] {
+  background-color: #404040 !important;
+}
+.bg-\[\#161D30\]:hover, .hover\:bg-\[\#202E4E\]:hover {
+  background-color: #4f4f4f !important;
+}
+
+.bg-\[\#1E293B\] {
+  background-color: #3d3d3d !important;
+}
+.hover\:bg-slate-800:hover {
+  background-color: #4a4a4a !important;
+}
+.hover\:bg-\[\#1E293B\]\/80:hover {
+  background-color: rgba(61, 61, 61, 0.8) !important;
+}
+.hover\:bg-\[\#1E293B\]\/40:hover {
+  background-color: rgba(61, 61, 61, 0.4) !important;
+}
+
+/* Empty or draft placeholder boxes */
+.border-slate-800 {
+  border-color: #444444 !important;
+}
+.border-\[\#1E293B\] {
+  border-color: #4c4c4c !important;
+}
+
+/* Video previews background slot */
+.bg-\[\#0E0F14\] {
+  background-color: #1a1a1a !important;
+}
+
+/* Active elements / highlight elements background */
+.bg-\[\#0F172A\] {
+  background-color: #2c2c2c !important;
+}
+.bg-\[\#0E1524\] {
+  background-color: #262626 !important;
+}
