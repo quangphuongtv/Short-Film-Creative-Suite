@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
@@ -949,6 +948,7 @@ async function startServer() {
     if (process.env.NODE_ENV === "production" && !hasBuiltApp) {
       console.warn("⚠️ NODE_ENV is set to production but dist/index.html was not found. Falling back to Vite development mode.");
     }
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
