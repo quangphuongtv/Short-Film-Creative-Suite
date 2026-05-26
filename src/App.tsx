@@ -12,7 +12,7 @@ import AudioComposer from './components/AudioComposer';
 
 import { ProjectState, GlobalBrief, SceneBreakdownItem, KeyElement, StoryboardShot } from './types';
 import { handleResponse } from './utils';
-import { Film, Trash2, Github, HelpCircle, Save, FolderOpen, Video, AlertCircle, Lock, X } from 'lucide-react';
+import { Film, Trash2, Github, HelpCircle, Save, FolderOpen, Video, AlertCircle, Lock, X, Key, CheckCircle2, Loader2, Eye, EyeOff } from 'lucide-react';
 
 const STORAGE_KEY = 'short_film_director_suite_state';
 
@@ -21,7 +21,79 @@ export default function App() {
   const [highestStepReached, setHighestStepReached] = useState<number>(1);
   const [blockedStepInfo, setBlockedStepInfo] = useState<{ targetStep: number; missingPrereqs: { step: number; label: string; description: string }[] } | null>(null);
 
+  const [apiKey, setApiKey] = useState<string>('');
+  const [apiKeyStatus, setApiKeyStatus] = useState<'empty' | 'verifying' | 'valid' | 'invalid'>('empty');
+  const [apiErrorMessage, setApiErrorMessage] = useState<string | null>(null);
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
+  const [showKey, setShowKey] = useState<boolean>(false);
   const [isUsingFallback, setIsUsingFallback] = useState<boolean>(false);
+
+  // Close key modal on hitting escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsApiKeyModalOpen(false);
+      }
+    };
+    if (isApiKeyModalOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isApiKeyModalOpen]);
+
+  // Load Gemini API Key status on launch
+  useEffect(() => {
+    const savedKey = localStorage.getItem('custom_gemini_api_key') || '';
+    if (savedKey) {
+      setApiKey(savedKey);
+      setApiKeyStatus('valid');
+    } else {
+      setApiKeyStatus('empty');
+    }
+  }, []);
+
+  const handleVerifyAndSaveApiKey = async (keyToVerify: string) => {
+    const trimmedKey = keyToVerify.trim();
+    if (!trimmedKey) {
+      setApiKeyStatus('empty');
+      setApiKey('');
+      setApiErrorMessage(null);
+      localStorage.removeItem('custom_gemini_api_key');
+      return;
+    }
+
+    setApiKeyStatus('verifying');
+    setApiErrorMessage(null);
+    try {
+      const res = await fetch('/api/verify-api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: trimmedKey })
+      });
+      const data = await handleResponse<{ valid: boolean; error?: string }>(res);
+      if (data.valid) {
+        localStorage.setItem('custom_gemini_api_key', trimmedKey);
+        setApiKey(trimmedKey);
+        setApiKeyStatus('valid');
+        setApiErrorMessage(null);
+        setIsApiKeyModalOpen(false);
+      } else {
+        setApiKeyStatus('invalid');
+        setApiErrorMessage(data.error || 'API Key không hợp lệ.');
+      }
+    } catch (err: any) {
+      setApiKeyStatus('invalid');
+      setApiErrorMessage(err.message || 'Không thể kết nối để xác thực.');
+    }
+  };
+
+  const openApiKeyModal = () => {
+    const savedKey = localStorage.getItem('custom_gemini_api_key') || '';
+    setApiKey(savedKey);
+    setIsApiKeyModalOpen(true);
+  };
 
   const [globalBrief, setGlobalBrief] = useState<GlobalBrief>({
     title: '',
@@ -330,6 +402,34 @@ export default function App() {
             </span>
           )}
 
+          {/* New API Key Action Button */}
+          <button
+            onClick={openApiKeyModal}
+            className={`p-1 px-3 rounded text-[10px] sm:text-xs font-bold font-mono flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer ${
+              apiKeyStatus === 'valid'
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                : apiKeyStatus === 'verifying'
+                ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse border border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.35)]'
+                : 'bg-rose-600 hover:bg-rose-700 text-white border border-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.55)] animate-pulse'
+            }`}
+            title="Cấu hình Gemini API Key cá nhân"
+          >
+            {apiKeyStatus === 'valid' ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-100" />
+            ) : apiKeyStatus === 'verifying' ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+            ) : (
+              <Key className="w-3.5 h-3.5 text-rose-100" />
+            )}
+            <span>
+              {apiKeyStatus === 'valid'
+                ? 'Gemini Key: OK'
+                : apiKeyStatus === 'verifying'
+                ? 'Đang kiểm tra...'
+                : 'Nhập API Key'}
+            </span>
+          </button>
+
           <button
             onClick={() => saveStateToStorage()}
             className="p-1 px-3 bg-[#161D30] hover:bg-[#202E4E] border border-slate-700 text-[10px] text-slate-200 font-bold rounded flex items-center gap-1 cursor-pointer transition-all active:scale-[0.98]"
@@ -396,6 +496,132 @@ export default function App() {
       </footer>
 
 
+
+      {/* API Key Modal Dialog Box Overlay */}
+      {isApiKeyModalOpen && (
+        <div 
+          onClick={() => setIsApiKeyModalOpen(false)}
+          className="fixed inset-0 bg-[#020617]/85 backdrop-blur-md flex items-center justify-center p-4 z-[9999] transition-all cursor-default"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#0B0F19] border border-slate-800 rounded-xl max-w-md w-full p-6 shadow-2xl relative cursor-default"
+          >
+            {/* Absolute close button in top right */}
+            <button
+              type="button"
+              onClick={() => setIsApiKeyModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-slate-200 hover:bg-slate-800/60 p-1.5 rounded-lg transition-all"
+              title="Đóng (Esc)"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="mb-4 pr-6">
+              <h3 className="text-base font-extrabold text-white tracking-wider flex items-center gap-2 uppercase font-mono">
+                <span className="inline-block w-2.5 h-5 bg-cyan-500 rounded-sm"></span>
+                CẤU HÌNH GEMINI API KEY
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 font-mono">
+                Nhập Gemini API Key cá nhân của bạn để mở rộng hiệu suất, tăng tốc độ xử lý câu thoại/hình ảnh mà không bị giới hạn lưu lượng (rate limits).
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase font-mono mb-1.5 flex justify-between items-center">
+                  <span>Gemini API Key</span>
+                  {apiKey && (
+                    <span className="text-[10px] text-slate-500 font-normal hover:text-slate-400 transition-colors">
+                      {apiKey.length} ký tự
+                    </span>
+                  )}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type={showKey ? "text" : "password"}
+                    placeholder="Nhập API Key ở đây (Bắt đầu bằng 'AIzaSy...')"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && apiKeyStatus !== 'verifying') {
+                        handleVerifyAndSaveApiKey(apiKey);
+                      }
+                    }}
+                    className="w-full pl-3 pr-10 py-2.5 bg-[#111827] border border-slate-700 rounded-lg text-sm text-[#F1F5F9] font-mono focus:outline-none focus:border-cyan-500 placeholder-slate-600 transition-all focus:ring-1 focus:ring-cyan-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(!showKey)}
+                    className="absolute right-3 text-slate-400 hover:text-slate-200 p-1 focus:outline-none rounded transition-colors"
+                    title={showKey ? "Ẩn Key" : "Hiển thị Key"}
+                  >
+                    {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {apiErrorMessage && (
+                <div className="p-3 bg-rose-950/40 border border-rose-800 rounded-lg text-xs text-rose-300 font-mono leading-relaxed">
+                  ⚠ {apiErrorMessage}
+                </div>
+              )}
+
+              {apiKeyStatus === 'valid' && (
+                <div className="p-3 bg-emerald-950/40 border border-emerald-800 rounded-lg text-xs text-emerald-300 font-mono flex items-center gap-1.5 leading-relaxed">
+                  ✓ API Key của bạn hợp lệ và đã lưu thành công!
+                </div>
+              )}
+
+              {apiKeyStatus === 'verifying' && (
+                <div className="p-3 bg-amber-950/40 border border-amber-800 rounded-lg text-xs text-amber-300 font-mono flex items-center gap-2 leading-relaxed">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+                  Đang tiến hành xác thực API Key với hệ thống Google Gemini...
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsApiKeyModalOpen(false)}
+                  className="px-4 py-2 bg-[#1E293B] hover:bg-[#334155] rounded-lg text-xs text-slate-300 font-medium transition-all cursor-pointer"
+                >
+                  Đóng
+                </button>
+                
+                {localStorage.getItem('custom_gemini_api_key') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem('custom_gemini_api_key');
+                      setApiKey('');
+                      setApiKeyStatus('empty');
+                      setApiErrorMessage(null);
+                      setIsApiKeyModalOpen(false);
+                    }}
+                    className="px-4 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 rounded-lg text-xs text-rose-300 font-medium transition-all cursor-pointer"
+                  >
+                    Xoá Key
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleVerifyAndSaveApiKey(apiKey)}
+                  disabled={apiKeyStatus === 'verifying'}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer"
+                >
+                  {apiKeyStatus === 'verifying' ? 'Đang xác thực...' : 'Xác thực & Lưu'}
+                </button>
+              </div>
+
+              <div className="text-[10px] text-slate-500 font-mono text-center pt-3 border-t border-slate-800/85 leading-relaxed">
+                Bạn chưa có Key? Nhận Key miễn phí tại <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">Google AI Studio</a>. Key được lưu an toàn trực tiếp trên LocalStorage của riêng trình duyệt của bạn.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Prerequisite Block Warning Modal dialog */}
       {blockedStepInfo && (
