@@ -7,7 +7,7 @@ export interface DefaultScript {
 }
 
 export const DEFAULT_SCRIPTS: DefaultScript[] = [
-  {
+   {
     id: "sci_fi_last_key",
     title: "Mật Mã Cuối Cùng (The Last Code)",
     genre: "Sci-Fi / Thriller",
@@ -56,5 +56,50 @@ VY
 "An... là anh đúng không?"
 
 An quay đầu sang, sững người. Ánh mắt hai người chạm nhau qua những giọt mưa rơi xuống thềm nhà ga cổ.`
+  },
+  {
+    id: "cyberpunk_market",
+    title: "Chợ Đêm Tương Lai (Cyberpunk Alley)",
+    genre: "Cyberpunk / Action",
+    brief: "Một lính đánh thuê tìm cách trao đổi kiện hàng dữ liệu sinh học quý giá tại khu chợ đen ẩm ướt đầy ánh đèn holographic rực rỡ.",
+    scriptText: `NGOẠI THẤT. SÂN CHỢ ĐEN VÙNG NHÀ GẦN - ĐÊM TỐI RỰC RỠ SẮC MÀU CHROME
+
+Rain (30 tuổi, cánh tay cơ khí lấp lánh ánh thép, khoác hờ áo gió phản quang) bước nhanh qua các sạp hàng thực phẩm tổng hợp nhòe nhoẹt hơi nước. Phía trên đầu, những tấm bảng hologram khổng lồ chiếu bức quảng cáo cá ngừ vây xanh nhân tạo lướt đi vô tận.
+
+Mưa giông trút xuống lấp lánh bụi nước phản chiếu từ đèn neon hồng tím và lam dạ quang nhạt nhòa.
+
+Rain nhìn dáo dác xung quanh, đặt ngón tay lên bộ đàm cấy dưới tai trái.
+
+RAIN
+(Nói giọng trầm ấm, căng thẳng)
+"Tôi đã đến tọa độ X-12. Phố Chợ Đen ẩm ướt và hỗn loạn quá mức dự tính. Chưa thấy liên lạc viên của tập đoàn Arasaka."
+
+Từ trong lối nhỏ ẩm ước phía sau tiệm mì ăn liền bốc khói, một bóng dáng khoác áo măng tô da bò đội mũ sụp sâu tiến tới. Gương mặt người đó ẩn sau chiếc mặt nạ kỹ thuật số phát sáng hai chữ song song: "DANGER / NGUY HIỂM".`
+  },
+  {
+    id: "Giong_Legend",
+    title: "Sự tích Thánh Gióng",
+    genre: "3D Animation",
+    brief: "Ở một ngôi làng, một cậu bé 3 tuổi không biết nói. Sau khi nghe triều đình thông cầu nhân tài ra giúp nước đánh giặc, cậu bé bỗng lớn nhanh thành tráng sĩ, ra sa trường diệt giặc",
+    scriptText: `NGOẠI THẤT. NGÔI LÀNG PHÙ ĐỔNG - BAN NGÀY
+
+Cảnh sắc làng quê Việt cổ bình yên dưới chân núi với rặng tre xanh ngắt.
+
+Người mẹ già mặc áo tứ thân nâu đất dọn dẹp trước mái nhà tranh dột nát. Cạnh hiên nhà, cậu bé Gióng (3 tuổi, bụ bẫm, mắt ngời sáng) nằm im lìm trên chõng tre, không nói không cười.
+
+Tiếng loa rao của sứ giả từ phía xa dội lại khẩn thiết.
+
+SỨ GIẢ (OFF-SCREEN)
+"Giặc Ân bạo tàn xâm lấn nước ta! Đức Vua cầu tìm nhân tài ra sức dẹp loạn giúp giang sơn!"
+
+Mẹ Gióng quay vào nhà, nhìn con thở dài đầy lo lắng, nước mắt lăn dài. Cậu bé Gióng nghe tiếng loa bỗng nhiên nhảy bật ngồi dậy, mắt sáng rực như có ánh lôi điện phi thường, cất lời nói đầu tiên dõng dạc.
+
+CẬU BÉ GIÓNG
+"Mẹ ra mời sứ giả nhà vua vào đây cho con thưa chuyện!"
+
+Sứ giả mặc hoàng y oai vệ bước vào túp lều tranh rách nát. Gióng đứng trước sứ giả, vươn vai một cái liền biến hóa thành một vị thần tướng oai phong lẫm liệt, tầm vóc cao lớn vượt bậc, cơ bập tráng kiện phi thường.
+
+TRÁNG SĨ GIÓNG
+"Mau về tâu lại Hoàng Thượng rèn cho ta ngựa sắt, gươm sắt, giáp sắt và nón sắt! Ta sẽ cưỡi gió đại phá quân xâm lược!"`
   }
 ];

@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { DEFAULT_SCRIPTS, DefaultScript } from '../defaultData';
 import { ProjectState, GlobalBrief } from '../types';
 import { handleResponse } from '../utils';
-import { Sparkles, ArrowRight, Video, Languages, HelpCircle } from 'lucide-react';
+import { SAVED_PROJECT_DATA } from '../data';
+import { Sparkles, ArrowRight, Video, Languages, HelpCircle, Save } from 'lucide-react';
 
 interface ScriptInputProps {
   onScriptParsed: (parsedData: { globalBrief: GlobalBrief; scenes: any[]; isFallback?: boolean }) => void;
+  onLoadSavedProject?: (savedData: any) => void;
 }
 
-export default function ScriptInput({ onScriptParsed }: ScriptInputProps) {
+export default function ScriptInput({ onScriptParsed, onLoadSavedProject }: ScriptInputProps) {
   const [scriptText, setScriptText] = useState('');
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [visualStyle, setVisualStyle] = useState('3D Pixar');
@@ -16,10 +18,29 @@ export default function ScriptInput({ onScriptParsed }: ScriptInputProps) {
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const selectPreset = (preset: DefaultScript) => {
+  const selectPreset = (preset: DefaultScript & { isSavedProject?: boolean }) => {
+    if (preset.isSavedProject && SAVED_PROJECT_DATA) {
+      if (onLoadSavedProject) {
+        onLoadSavedProject(SAVED_PROJECT_DATA);
+      }
+      return;
+    }
     setScriptText(preset.scriptText);
     setError(null);
   };
+
+  const allScripts = [...DEFAULT_SCRIPTS];
+  const hasSavedData = SAVED_PROJECT_DATA && typeof SAVED_PROJECT_DATA === 'object' && (SAVED_PROJECT_DATA as any).globalBrief?.title;
+  if (hasSavedData) {
+    allScripts.unshift({
+      id: "saved_project",
+      title: `${(SAVED_PROJECT_DATA as any).globalBrief.title} (Bản lưu hệ thống 💾)`,
+      genre: (SAVED_PROJECT_DATA as any).globalBrief.genre || '3D Animation',
+      brief: "Nhấp để khôi phục toàn bộ tiến trình, kịch bản, và hình ảnh đã lưu trong file data.ts",
+      scriptText: (SAVED_PROJECT_DATA as any).globalBrief.scriptText || '',
+      isSavedProject: true
+    } as any);
+  }
 
   const handleParse = async () => {
     if (!scriptText.trim()) {
@@ -105,24 +126,37 @@ export default function ScriptInput({ onScriptParsed }: ScriptInputProps) {
 
           {/* Preset templates */}
           <div>
-            <span className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <span className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-400 mb-2 font-mono">
               Hoặc trải nghiệm nhanh với các Kịch bản mẫu bên dưới:
             </span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {DEFAULT_SCRIPTS.map((preset) => (
-                <button
-                  type="button"
-                  key={preset.id}
-                  onClick={() => selectPreset(preset)}
-                  className="p-3 text-left border border-slate-800 bg-[#0F1722]/50 rounded-lg hover:bg-[#1E293B]/60 hover:border-cyan-800 transition-all cursor-pointer group"
-                >
-                  <h4 className="text-xs font-bold text-slate-200 group-hover:text-cyan-400 transition-colors">
-                    {preset.title}
-                  </h4>
-                  <p className="text-[10px] text-cyan-400/80 font-mono mt-1">{preset.genre}</p>
-                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">{preset.brief}</p>
-                </button>
-              ))}
+              {allScripts.map((preset) => {
+                const isSaved = (preset as any).isSavedProject;
+                return (
+                  <button
+                    type="button"
+                    key={preset.id}
+                    onClick={() => selectPreset(preset)}
+                    className={`p-3 text-left border rounded-lg transition-all cursor-pointer group ${
+                      isSaved
+                        ? 'border-emerald-500/60 bg-emerald-950/20 hover:bg-emerald-950/30 hover:border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                        : 'border-slate-800 bg-[#0F1722]/50 hover:bg-[#1E293B]/60 hover:border-cyan-800'
+                    }`}
+                  >
+                    <h4 className={`text-xs font-bold transition-colors ${
+                      isSaved ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-slate-200 group-hover:text-cyan-400'
+                    }`}>
+                      {preset.title}
+                    </h4>
+                    <p className={`text-[10px] font-mono mt-1 ${isSaved ? 'text-emerald-400' : 'text-cyan-400/80'}`}>
+                      {preset.genre}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">
+                      {preset.brief}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

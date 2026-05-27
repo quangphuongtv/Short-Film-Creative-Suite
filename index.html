@@ -1,6 +1,41 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Prevent "Cannot set property fetch of #<Window> which has only a getter" error in sandboxed/iframe environments
+      (function() {
+        try {
+          var originalFetch = window.fetch;
+          var customFetch = originalFetch;
+          
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return customFetch;
+            },
+            set: function(val) {
+              customFetch = typeof val === 'function' ? val.bind(window) : (val || originalFetch);
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          try {
+            Object.defineProperty(Window.prototype, 'fetch', {
+              get: function() {
+                return customFetch;
+              },
+              set: function(val) {
+                customFetch = typeof val === 'function' ? val.bind(window) : (val || originalFetch);
+              },
+              configurable: true,
+              enumerable: true
+            });
+          } catch (protoErr) {
+            console.warn('Unable to patch window.fetch:', protoErr);
+          }
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Short Film Storyboard Processor</title>
