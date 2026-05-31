@@ -253,23 +253,22 @@ export default function App() {
   };
 
   const handleClearProject = () => {
-    if (confirm('Bạn có chắc chắn muốn huỷ các bước đang làm, xoá trống phần nội dung trong các mục đã phát sinh và quay trở về bước đầu tiên (Phase 01 Global Brief)?')) {
-      localStorage.removeItem(STORAGE_KEY);
-      setGlobalBrief({
-        title: '',
-        genre: '',
-        aspectRatio: '16:9',
-        visualStyle: '3D Pixar',
-        language: 'English',
-        scriptText: ''
-      });
-      setScenes([]);
-      setKeyElements([]);
-      setStoryboard([]);
-      setIsUsingFallback(false);
-      setCurrentStep(1);
-      setHighestStepReached(1);
-    }
+    localStorage.removeItem(STORAGE_KEY);
+    setGlobalBrief({
+      title: '',
+      genre: '',
+      aspectRatio: '16:9',
+      visualStyle: '3D Pixar',
+      language: 'English',
+      scriptText: ''
+    });
+    setScenes([]);
+    setKeyElements([]);
+    setStoryboard([]);
+    setIsUsingFallback(false);
+    setSaveStatus(null);
+    setCurrentStep(1);
+    setHighestStepReached(1);
   };
 
   const handleLoadSavedProject = (savedData: any) => {
