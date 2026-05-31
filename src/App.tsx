@@ -9,6 +9,7 @@ import ElementImagesReview from './components/ElementImagesReview';
 import StartFrameImageReview from './components/StartFrameImageReview';
 import VideoPromptsReview from './components/VideoPromptsReview';
 import AudioComposer from './components/AudioComposer';
+import JSZip from 'jszip';
 
 import { ProjectState, GlobalBrief, SceneBreakdownItem, KeyElement, StoryboardShot } from './types';
 import { handleResponse } from './utils';
@@ -118,8 +119,24 @@ export default function App() {
         const parsed = JSON.parse(stored);
         if (parsed.globalBrief) setGlobalBrief(parsed.globalBrief);
         if (parsed.scenes) setScenes(parsed.scenes);
-        if (parsed.keyElements) setKeyElements(parsed.keyElements);
-        if (parsed.storyboard) setStoryboard(parsed.storyboard);
+        if (parsed.keyElements) {
+          const hydratedElements = parsed.keyElements.map((el: any) => {
+            if (el.imageRef && !el.imageUrl) {
+              return { ...el, imageUrl: el.imageRef };
+            }
+            return el;
+          });
+          setKeyElements(hydratedElements);
+        }
+        if (parsed.storyboard) {
+          const hydratedStoryboard = parsed.storyboard.map((shot: any) => {
+            if (shot.imageRef && !shot.startFrameUrl) {
+              return { ...shot, startFrameUrl: shot.imageRef };
+            }
+            return shot;
+          });
+          setStoryboard(hydratedStoryboard);
+        }
         if (parsed.currentStep) {
           setCurrentStep(parsed.currentStep);
           setHighestStepReached(parsed.highestStepReached || parsed.currentStep);
@@ -259,8 +276,26 @@ export default function App() {
     if (!savedData) return;
     if (savedData.globalBrief) setGlobalBrief(savedData.globalBrief);
     if (savedData.scenes) setScenes(savedData.scenes);
-    if (savedData.keyElements) setKeyElements(savedData.keyElements);
-    if (savedData.storyboard) setStoryboard(savedData.storyboard);
+    
+    let loadedElements = savedData.keyElements || [];
+    loadedElements = loadedElements.map((el: any) => {
+      // Hydrate imageRef to imageUrl for runtime compat
+      if (el.imageRef && !el.imageUrl) {
+        return { ...el, imageUrl: el.imageRef };
+      }
+      return el;
+    });
+    setKeyElements(loadedElements);
+    
+    let loadedStoryboard = savedData.storyboard || [];
+    loadedStoryboard = loadedStoryboard.map((shot: any) => {
+      // Hydrate imageRef to startFrameUrl for runtime compat
+      if (shot.imageRef && !shot.startFrameUrl) {
+        return { ...shot, startFrameUrl: shot.imageRef };
+      }
+      return shot;
+    });
+    setStoryboard(loadedStoryboard);
     
     const targetStep = savedData.currentStep || 1;
     const highestStep = savedData.highestStepReached || targetStep;
@@ -275,13 +310,59 @@ export default function App() {
           highestStepReached: highestStep,
           globalBrief: savedData.globalBrief,
           scenes: savedData.scenes,
-          keyElements: savedData.keyElements,
-          storyboard: savedData.storyboard,
+          keyElements: loadedElements,
+          storyboard: loadedStoryboard,
           isUsingFallback: false
         })
       );
     } catch (e) {
       console.warn('Could not save loaded state to localStorage:', e);
+    }
+  };
+  
+  // Convert Data URIs (Base64 PNG or Raw SVG code) into binary Blob data safely (resilient and asynchronous)
+  const dataURLtoBlob = async (dataurl: string): Promise<Blob> => {
+    try {
+      const res = await fetch(dataurl);
+      return await res.blob();
+    } catch (fetchErr) {
+      console.warn('Native fetch conversion of data URL failed, trying fallback manual parses:', fetchErr);
+      const parts = dataurl.split(',');
+      if (parts.length < 2) {
+        return new Blob([], { type: 'image/png' });
+      }
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+      const isBase64 = parts[0].indexOf('base64') >= 0;
+      
+      let payload = parts[1];
+      try {
+        payload = decodeURIComponent(payload);
+      } catch (e) {
+        // Safe ignore
+      }
+
+      if (isBase64) {
+        // Clean any possible illegal characters and spaces from base64 string
+        payload = payload.trim().replace(/\s/g, '').replace(/[^A-Za-z0-9+/=]/g, "");
+        while (payload.length % 4 !== 0) {
+          payload += '=';
+        }
+        try {
+          const bstr = atob(payload);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          return new Blob([u8arr], { type: mime });
+        } catch (bstrErr) {
+          console.error('All decode attempts failed:', bstrErr);
+          return new Blob([], { type: mime });
+        }
+      } else {
+        return new Blob([payload], { type: mime });
+      }
     }
   };
 
@@ -314,14 +395,15 @@ export default function App() {
           error: data.error
         });
         
-        // Trigger file download in client-side immediately!
+        // 1. Dynamic download key script as direct TypeScript code file
         if (data.content) {
           try {
             const blob = new Blob([data.content], { type: 'text/plain;charset=utf-8' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'data.ts';
+            // Use formatted lowercase name from server, e.g. "thanhgiong.ts"
+            a.download = data.formattedFileName || 'data.ts';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -330,6 +412,76 @@ export default function App() {
             console.warn('Browser auto-download failed, showing copy code block instead:', dlErr);
           }
         }
+
+        // 2. Client-side automatic images packaging and downloading inside a nicely formed ZIP file
+        try {
+          const zip = new JSZip();
+          
+          // Folder A: Key designer elements (characters, locations, props)
+          const elementsFolder = zip.folder("key_elements");
+          if (elementsFolder) {
+            for (const element of keyElements) {
+              if (element.imageUrl && element.imageUrl.startsWith("data:")) {
+                const url = element.imageUrl;
+                const isSvg = url.startsWith("data:image/svg+xml");
+                const ext = isSvg ? "svg" : "png";
+                
+                try {
+                  const blob = await dataURLtoBlob(url);
+                  const safeName = element.name.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+                  elementsFolder.file(`${element.type}_${safeName}.${ext}`, blob);
+                } catch (elemZipErr) {
+                  console.warn(`Could not add image for element ${element.name} to zip:`, elemZipErr);
+                }
+              }
+            }
+          }
+
+          // Folder B: Storyboard scenes & camera shot frames
+          const shotsFolder = zip.folder("storyboard_shots");
+          if (shotsFolder) {
+            for (const shot of storyboard) {
+              if (shot.startFrameUrl && shot.startFrameUrl.startsWith("data:")) {
+                const url = shot.startFrameUrl;
+                const isSvg = url.startsWith("data:image/svg+xml");
+                const ext = isSvg ? "svg" : "png";
+                
+                try {
+                  const blob = await dataURLtoBlob(url);
+                  shotsFolder.file(`shot_${shot.id}.${ext}`, blob);
+                } catch (shotZipErr) {
+                  console.warn(`Could not add scene shot frame ${shot.id} to zip:`, shotZipErr);
+                }
+              }
+            }
+          }
+
+          // Generate file pack
+          const zipBlob = await zip.generateAsync({ type: "blob" });
+          
+          // Form file name
+          const titleNormalized = (globalBrief.title || "storyboard")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/đ/g, "d")
+            .replace(/Đ/g, "D")
+            .replace(/[^a-zA-Z0-9]+/g, "_")
+            .toLowerCase();
+          
+          const zipFilename = `${titleNormalized || 'du_an'}_images.zip`;
+          const zipUrl = URL.createObjectURL(zipBlob);
+          const zipLink = document.createElement("a");
+          zipLink.href = zipUrl;
+          zipLink.download = zipFilename;
+          document.body.appendChild(zipLink);
+          zipLink.click();
+          document.body.removeChild(zipLink);
+          URL.revokeObjectURL(zipUrl);
+          console.log(`Successfully downloaded compressed images pack: ${zipFilename}`);
+        } catch (zipErr) {
+          console.warn("Could not bundle or auto download step images ZIP bundle:", zipErr);
+        }
+
       } else {
         setSaveStatus({
           success: false,
@@ -338,8 +490,49 @@ export default function App() {
       }
     } catch (err: any) {
       console.error('Error in handleSaveStoryboard:', err);
-      // Fallback compile code representation purely in frontend and download if API fails!
+      // Fallback compile representation inside memory and download if server goes offline
       const timestamp = new Date().toISOString();
+
+      const cleanedFallbackKeyElements = (keyElements || []).map((elem: any) => {
+        const cloned = { ...elem };
+        let refName = "";
+        if (cloned.imageUrl) {
+          if (cloned.imageUrl.startsWith("data:")) {
+            const safeElemName = (cloned.name || "element").replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+            refName = `${cloned.type}_${safeElemName}_ref.png`;
+          } else if (!cloned.imageUrl.startsWith("http")) {
+            refName = cloned.imageUrl;
+          } else {
+            const safeElemName = (cloned.name || "element").replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+            refName = `${cloned.type}_${safeElemName}_ref.png`;
+          }
+        } else if (cloned.imageRef) {
+          refName = cloned.imageRef;
+        }
+        cloned.imageRef = refName || "";
+        return cloned;
+      });
+
+      const cleanedFallbackStoryboard = (storyboard || []).map((shot: any) => {
+        const cloned = { ...shot };
+        let refName = "";
+        
+        if (cloned.startFrameUrl) {
+          if (cloned.startFrameUrl.startsWith("data:")) {
+            refName = `shot_${cloned.id}_startframe.png`;
+          } else if (!cloned.startFrameUrl.startsWith("http")) {
+            refName = cloned.startFrameUrl;
+          } else {
+            refName = `shot_${cloned.id}_startframe.png`;
+          }
+        } else if (cloned.imageRef) {
+          refName = cloned.imageRef;
+        }
+
+        cloned.imageRef = refName || "";
+        return cloned;
+      });
+
       const fallbackContent = `// This file was automatically generated by AI Short Film Storyboard Suite (Client Fallback)
 // Saved At: ${timestamp}
 
@@ -349,23 +542,53 @@ export const SAVED_PROJECT_DATA = {
   highestStepReached: ${JSON.stringify(highestStepReached || 1)},
   globalBrief: ${JSON.stringify(globalBrief || {}, null, 2)},
   scenes: ${JSON.stringify(scenes || [], null, 2)},
-  keyElements: ${JSON.stringify(keyElements || [], null, 2)},
-  storyboard: ${JSON.stringify(storyboard || [], null, 2)}
+  keyElements: ${JSON.stringify(cleanedFallbackKeyElements, null, 2)},
+  storyboard: ${JSON.stringify(cleanedFallbackStoryboard, null, 2)}
 };
 `;
+
+      const removeVietnameseTones = (txt: string) => {
+        if (!txt) return "";
+        let str = txt;
+        str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g,"a"); 
+        str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g,"e"); 
+        str = str.replace(/ì|í|ị|ỉ|ĩ/g,"i"); 
+        str = str.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g,"o"); 
+        str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g,"u"); 
+        str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g,"y"); 
+        str = str.replace(/đ/g,"d");
+        str = str.replace(/À|Á|Ạ|Ả|Ã|Â|Ầ|Ấ|Ậ|Ẩ|Ẫ|Ă|Ằ|Ắ|Ặ|Ẳ|Ẵ/g, "A");
+        str = str.replace(/È|É|Ẹ|Ẻ|Ẽ|Ê|Ề|Ế|Ệ|Ể|Ễ/g, "E");
+        str = str.replace(/Ì|Í|Ị|Ỉ|Ĩ/g, "I");
+        str = str.replace(/Ò|Ó|Ọ|Ỏ|Õ|Ô|Ồ|Ố|Ộ|Ổ|Ỗ|Ơ|Ờ|Ớ|Ợ|Ở|Ỡ/g, "O");
+        str = str.replace(/Ù|Ú|Ụ|Ủ|Ũ|Ư|Ừ|Ứ|Ự|Ử|Ữ/g, "U");
+        str = str.replace(/Ỳ|Ý|Ỵ|Ỷ|Ỹ/g, "Y");
+        str = str.replace(/Đ/g, "D");
+        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      };
+
+      const getCamelFileName = (title: string) => {
+        const raw = removeVietnameseTones(title || "ThanhGiong");
+        const stripped = raw.replace(/[^a-zA-Z0-9\s]/g, "");
+        const words = stripped.split(/\s+/).filter(Boolean);
+        const camelCased = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join("");
+        return (camelCased || "ThanhGiong") + ".ts";
+      };
+
+      const customFileName = getCamelFileName(globalBrief.title);
+
       setSaveStatus({
         success: false,
         error: `Không thể kết nối dịch vụ lưu từ xa (${err.message}). Bắt đầu chuẩn bị tải tệp dữ liệu về thiết bị cá nhân của bạn.`,
         content: fallbackContent
       });
       
-      // Auto download client-side generated content anyway!
       try {
         const blob = new Blob([fallbackContent], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'data.ts';
+        a.download = customFileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -533,7 +756,7 @@ export const SAVED_PROJECT_DATA = {
             onClick={openApiKeyModal}
             className={`p-1 px-3 rounded text-[10px] sm:text-xs font-bold font-mono flex items-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer ${
               apiKeyStatus === 'valid'
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.35)]'
+                ? 'bg-emerald-600/50 hover:bg-emerald-700/50 text-white border border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
                 : apiKeyStatus === 'verifying'
                 ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse border border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.35)]'
                 : 'bg-rose-600 hover:bg-rose-700 text-white border border-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.55)] animate-pulse'
@@ -541,7 +764,7 @@ export const SAVED_PROJECT_DATA = {
             title="Cấu hình Gemini API Key cá nhân"
           >
             {apiKeyStatus === 'valid' ? (
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-100" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200/80" />
             ) : apiKeyStatus === 'verifying' ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
             ) : (
@@ -556,19 +779,21 @@ export const SAVED_PROJECT_DATA = {
             </span>
           </button>
 
-          <button
-            onClick={handleSaveStoryboard}
-            disabled={isSaving}
-            className="p-1 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border border-emerald-500/80 text-[10px] sm:text-xs text-white font-bold rounded flex items-center gap-1.5 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_12px_rgba(16,185,129,0.2)]"
-            title="Lưu tất cả dữ liệu đã phát sinh ở tất cả các bước vào tệp src/data.ts và tải về máy"
-          >
-            {isSaving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Save className="w-3.5 h-3.5 text-emerald-100" />
-            )}
-            <span>Lưu Storyboard</span>
-          </button>
+          {currentStep === 9 && (
+            <button
+              onClick={handleSaveStoryboard}
+              disabled={isSaving}
+              className="p-1 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 border border-blue-500/80 text-[10px] sm:text-xs text-white font-bold rounded flex items-center gap-1.5 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_12px_rgba(59,130,246,0.25)]"
+              title="Lưu tất cả dữ liệu đã phát sinh ở tất cả các bước vào tệp src/data.ts và tải về máy"
+            >
+              {isSaving ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5 text-indigo-100" />
+              )}
+              <span>Lưu Storyboard</span>
+            </button>
+          )}
 
           <button
             onClick={() => saveStateToStorage()}

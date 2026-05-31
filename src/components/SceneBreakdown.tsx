@@ -177,13 +177,14 @@ export default function SceneBreakdown({ initialScenes, onConfirm, onBack }: Sce
                     placeholder="Mô tả hành động trực quan..."
                   />
                   {scene.transitionLogic && (
-                    <div className="mt-1.5 flex items-center gap-1 px-2">
+                    <div className="mt-1.5 flex items-center gap-1 px-2 flex-wrap">
                       <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Kỹ thuật nối cảnh:</span>
                       <input
                         type="text"
                         value={scene.transitionLogic}
                         onChange={(e) => handleUpdate(index, { transitionLogic: e.target.value })}
-                        className="text-[10px] font-mono text-cyan-400 bg-transparent border-b border-transparent focus:border-cyan-400 focus:outline-none py-0.5"
+                        style={{ width: `${Math.max(150, (scene.transitionLogic || "").length * 7)}px` }}
+                        className="text-[10px] font-mono text-cyan-400 bg-transparent border-b border-transparent focus:border-cyan-400 focus:outline-none py-0.5 max-w-full"
                         placeholder="Nối cảnh..."
                       />
                     </div>

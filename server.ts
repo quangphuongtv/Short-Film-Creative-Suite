@@ -36,6 +36,38 @@ function isValidGeminiApiKey(key: string): boolean {
   return trimmed.startsWith("AIzaSy");
 }
 
+// Clean and sanitize raw API error output to keep logs pristine and readable
+function cleanErrorMessage(err: any): string {
+  if (!err) return "Chưa rõ nguyên nhân lỗi.";
+  const errMsg = err.message || String(err);
+  
+  if (errMsg.includes("{")) {
+    try {
+      const startIdx = errMsg.indexOf("{");
+      const endIdx = errMsg.lastIndexOf("}") + 1;
+      const jsonStr = errMsg.substring(startIdx, endIdx);
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.error?.message) {
+        return parsed.error.message;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  if (errMsg.includes("API Key not found") || errMsg.includes("API key not found") || errMsg.includes("key is required")) {
+    return "API Key không được cung cấp hoặc không chính xác.";
+  }
+  if (errMsg.includes("API_KEY_INVALID") || errMsg.includes("invalid key")) {
+    return "API Key không hợp lệ hoặc đã hết hạn.";
+  }
+  if (errMsg.includes("quota") || errMsg.includes("Quota Exceeded") || errMsg.includes("RESOURCE_EXHAUSTED")) {
+    return "Hạn mức API Key của bạn trên Google AI Studio đã cạn kiệt.";
+  }
+
+  return errMsg.length > 150 ? errMsg.substring(0, 150) + "..." : errMsg;
+}
+
 // Initialize GoogleGenAI helper server-side to dynamically use client key if provided
 function getGenAIClient(req: express.Request): GoogleGenAI {
   const customKey = req.headers["x-gemini-api-key"] as string || "";
@@ -159,7 +191,7 @@ app.post("/api/verify-api-key", async (req, res) => {
       return res.status(400).json({ valid: false, error: "Không nhận được phản hồi từ mô hình." });
     }
   } catch (err: any) {
-    console.error("Xác thực API Key thất bại:", err);
+    console.log("Xác thực API Key thất bại:", cleanErrorMessage(err));
     return res.status(400).json({
       valid: false,
       error: formatGeminiError(err)
@@ -247,7 +279,7 @@ Provide the response in the following strict JSON format:
     const resultText = response.text || "{}";
     res.json(JSON.parse(resultText));
   } catch (error: any) {
-    console.warn("AI Core Parsing failed. Initiating Smart Offline Film Parser fallback...", error.message || error);
+    console.log("Offline Film Parser backup activated seamlessly:", cleanErrorMessage(error));
     try {
       // Clean scriptText. Split into candidate scenes
       const lines = scriptText
@@ -405,7 +437,7 @@ Provide the output in this strict JSON format:
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
-    console.warn("AI Core Elements Generator failed. Initiating Smart Offline Elements Builder fallback...", error.message || error);
+    console.log("Offline Elements Builder backup activated seamlessly:", cleanErrorMessage(error));
     try {
       const parentStyle = brief?.visualStyle || "3D Pixar";
       const scenesList = scenes || [];
@@ -662,7 +694,7 @@ Return the storyboard in the following strict JSON array format:
 
     res.json(JSON.parse(response.text || "{}"));
   } catch (error: any) {
-    console.warn("AI Storyboard Generator failed. Designing rich, customized Offline Storyboard Shots draft fallback...", error.message || error);
+    console.log("Offline Storyboard Designer backup activated seamlessly:", cleanErrorMessage(error));
     try {
       const parentStyle = brief?.visualStyle || "3D Pixar";
       const scenesList = scenes || [];
@@ -816,7 +848,7 @@ app.post("/api/generate-image", async (req, res) => {
     }
 
   } catch (error: any) {
-    console.warn("AI Image Generation failed or is not available. Falling back to dynamic cinematic canvas rendering...", error.message || error);
+    console.log("Offline Sketchboard Canvas backup activated seamlessly:", cleanErrorMessage(error));
     
     // Generative fallback image representing a sketch or film design board with metadata overlay
     const searchTags = prompt.substring(0, 100).replace(/[^\w\s]/g, "").replace(/\s+/g, ",");
@@ -923,7 +955,7 @@ app.post("/api/generate-narration", async (req, res) => {
       throw new Error("Could not find audio data block in output candidates.");
     }
   } catch (error: any) {
-    console.warn("AI TTS Audio Generation failed or is unauthorized. Sending structured mock response.", error.message || error);
+    console.log("Offline Speech Synthesizer backup activated seamlessly:", cleanErrorMessage(error));
     // Since some free keys don't support TTS modals or return error, we can generate a mock AudioData
     // directly in the frontend (or let frontend play a beautiful fallback text-to-speech synthesize using 
     // window.speechSynthesis, which works brilliantly in browser)!
@@ -962,6 +994,48 @@ app.post("/api/save-storyboard", async (req, res) => {
   const { globalBrief, scenes, keyElements, storyboard, currentStep, highestStepReached } = req.body;
   
   const timestamp = new Date().toISOString();
+
+  // Keep all properties including dynamic image links intact
+  const cleanedKeyElements = (keyElements || []).map((elem: any) => {
+    const cloned = { ...elem };
+    let refName = "";
+    if (cloned.imageUrl) {
+      if (cloned.imageUrl.startsWith("data:")) {
+        const safeElemName = (cloned.name || "element").replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+        refName = `${cloned.type}_${safeElemName}_ref.png`;
+      } else if (!cloned.imageUrl.startsWith("http")) {
+        refName = cloned.imageUrl;
+      } else {
+        const safeElemName = (cloned.name || "element").replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase();
+        refName = `${cloned.type}_${safeElemName}_ref.png`;
+      }
+    } else if (cloned.imageRef) {
+      refName = cloned.imageRef;
+    }
+    
+    cloned.imageRef = refName || "";
+    return cloned;
+  });
+
+  const cleanedStoryboard = (storyboard || []).map((shot: any) => {
+    const cloned = { ...shot };
+    let refName = "";
+    
+    if (cloned.startFrameUrl) {
+      if (cloned.startFrameUrl.startsWith("data:")) {
+        refName = `shot_${cloned.id}_startframe.png`;
+      } else if (!cloned.startFrameUrl.startsWith("http")) {
+        refName = cloned.startFrameUrl;
+      } else {
+        refName = `shot_${cloned.id}_startframe.png`;
+      }
+    } else if (cloned.imageRef) {
+      refName = cloned.imageRef;
+    }
+
+    cloned.imageRef = refName || "";
+    return cloned;
+  });
   
   const content = `// This file was automatically generated by AI Short Film Storyboard Suite
 // Saved At: ${timestamp}
@@ -994,6 +1068,7 @@ export interface SavedProjectData {
     looks?: string[];
     imagePrompt?: string;
     imageUrl?: string;
+    imageRef?: string;
   }[];
   storyboard: {
     id: string;
@@ -1017,6 +1092,7 @@ export interface SavedProjectData {
     videoPrompt?: string;
     startFrameUrl?: string;
     videoUrl?: string;
+    imageRef?: string;
   }[];
 }
 
@@ -1033,30 +1109,219 @@ export const SAVED_PROJECT_DATA: SavedProjectData = {
     scriptText: ''
   }, null, 2)},
   scenes: ${JSON.stringify(scenes || [], null, 2)},
-  keyElements: ${JSON.stringify(keyElements || [], null, 2)},
-  storyboard: ${JSON.stringify(storyboard || [], null, 2)}
+  keyElements: ${JSON.stringify(cleanedKeyElements, null, 2)},
+  storyboard: ${JSON.stringify(cleanedStoryboard, null, 2)}
 };
 `;
 
+  // String tone normalization functions to form beautiful file names
+  function removeLettersWithAccents(txt: string) {
+    if (!txt) return "";
+    let str = txt;
+    str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g,"a"); 
+    str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g,"e"); 
+    str = str.replace(/ì|í|ị|ỉ|ĩ/g,"i"); 
+    str = str.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g,"o"); 
+    str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g,"u"); 
+    str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g,"y"); 
+    str = str.replace(/đ/g,"d");
+    str = str.replace(/À|Á|Ạ|Ả|Ã|Â|Ầ|Ấ|Ậ|Ẩ|Ẫ|Ă|Ằ|Ắ|Ặ|Ẳ|Ẵ/g, "A");
+    str = str.replace(/È|É|Ẹ|Ẻ|Ẽ|Ê|Ề|Ế|Ệ|Ể|Ễ/g, "E");
+    str = str.replace(/Ì|Í|Ị|R|Ĩ/g, "I");
+    str = str.replace(/Ò|Ó|Ọ|Ỏ|Õ|Ô|Ồ|Ố|Ộ|Ổ|Ỗ|Ơ|Ờ|Ớ|Ợ|Ở|Ỡ/g, "O");
+    str = str.replace(/Ù|Ú|Ụ|Ủ|Ũ|Ư|Ừ|Ứ|Ự|Ử|Ữ/g, "U");
+    str = str.replace(/Ỳ|Ý|Y|Ỷ|Ỹ/g, "Y");
+    str = str.replace(/Đ/g, "D");
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function getNames(title: string) {
+    const raw = removeLettersWithAccents(title || "ChuyenTauMuon");
+    // Strip non-alphanumeric characters, keeping spaces
+    const stripped = raw.replace(/[^a-zA-Z0-9\s]/g, "");
+    const words = stripped.split(/\s+/).filter(Boolean);
+    const camelCased = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join("");
+    const lowerAll = words.join("").toLowerCase();
+    return { camel: camelCased || "ThanhGiong", lower: lowerAll || "thanhgiong" };
+  }
+
+  const projTitle = globalBrief?.title || "Chuyến Tàu Muộn";
+  const { camel, lower } = getNames(projTitle);
+
   try {
-    const dataFilePath = path.join(process.cwd(), "src", "data.ts");
-    fs.writeFileSync(dataFilePath, content, "utf-8");
-    console.log(`Successfully saved storyboard project data to ${dataFilePath}`);
+    // 1. Write file to src/data.ts for automatic launch recovery
+    const mainDataFilePath = path.join(process.cwd(), "src", "data.ts");
+    fs.writeFileSync(mainDataFilePath, content, "utf-8");
+    console.log(`Successfully saved default storyboard project data to ${mainDataFilePath}`);
+
+    // 2. Client-side download is requested. No server-side write to src/storyboards directory.
+
+    // 3. Add to Template Library in defaultData.ts dynamically
+    const defaultDataPath = path.join(process.cwd(), "src", "defaultData.ts");
+    if (fs.existsSync(defaultDataPath)) {
+      let defaultDataContent = fs.readFileSync(defaultDataPath, "utf-8");
+      
+      const genreClean = removeLettersWithAccents(globalBrief?.genre || 'Drama')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const titleClean = removeLettersWithAccents(projTitle)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      const newId = `${genreClean || 'drama'}_${titleClean || 'story'}`;
+      const newTitle = projTitle;
+      const newGenre = globalBrief?.genre || "Drama / Romance";
+      
+      let newBrief = "";
+      if (scenes && scenes.length > 0) {
+        newBrief = `Dự án kịch bản thể loại ${newGenre} kể về phân cảnh: ${scenes[0].description.substring(0, 100)}...`;
+      } else {
+        newBrief = `Dự án kịch bản phim ngắn thể loại ${newGenre}.`;
+      }
+
+      let scriptSummary = globalBrief?.scriptText || "";
+
+      // Try calling Gemini to generate a high-quality 1-line summary brief and scriptText summary if key is available
+      try {
+        const aiClient = getGenAIClient(req);
+        const scriptExcerpt = (globalBrief?.scriptText || "").substring(0, 1500);
+        
+        // A. Brief Generation
+        const briefPrompt = `
+          Hãy tóm tắt kịch bản sau thành một câu giới thiệu phim ngắn tiếng Việt duy nhất, cực kỳ ngắn gọn khoảng 1 dòng để làm "brief" giới thiệu dự án:
+          
+          Tiêu đề: ${newTitle}
+          Thể loại: ${newGenre}
+          Kịch bản: ${scriptExcerpt}
+          
+          Trả về DUY NHẤT một dòng tiếng Việt ngắn gọn làm giới thiệu kịch bản, không kèm bất kỳ giải thích hay ký hiệu nào khác.
+        `;
+        const briefResponse = await aiClient.models.generateContent({
+          model: 'gemini-2.1-flash',
+          contents: briefPrompt
+        });
+        if (briefResponse?.text) {
+          const generatedBrief = briefResponse.text.trim().replace(/^"|"$/g, "");
+          if (generatedBrief) {
+            newBrief = generatedBrief;
+          }
+        }
+
+        // B. scriptText Summary Generation
+        const summaryPrompt = `
+          Hãy tóm tắt kịch bản phim sau thành một bản tóm tắt phân cảnh kịch bản chi tiết và lôi cuốn bằng tiếng Việt (khoảng 3-5 câu), giữ nguyên tên nhân vật và bối cảnh chính:
+          
+          Tiêu đề: ${newTitle}
+          Thể loại: ${newGenre}
+          Kịch bản: ${scriptExcerpt}
+          
+          Chỉ trả về phần tóm tắt kịch bản bằng tiếng Việt, không kèm bất kỳ giải thiết hay nhãn nào khác.
+        `;
+        const summaryResponse = await aiClient.models.generateContent({
+          model: 'gemini-2.1-flash',
+          contents: summaryPrompt
+        });
+        if (summaryResponse?.text) {
+          const generatedSummary = summaryResponse.text.trim();
+          if (generatedSummary) {
+            scriptSummary = generatedSummary;
+          }
+        }
+      } catch (aiSummaryErr: any) {
+        console.log("Using dynamic fallback for template summaries:", aiSummaryErr.message);
+        if (scriptSummary.length > 300) {
+          scriptSummary = scriptSummary.substring(0, 300) + "...";
+        }
+      }
+
+      const newEntry = {
+        id: newId,
+        title: newTitle,
+        genre: newGenre,
+        brief: newBrief,
+        scriptText: scriptSummary
+      };
+
+      // Only insert if this scriptTitle or scriptText is not already in defaultData.ts
+      if (!defaultDataContent.includes(JSON.stringify(newEntry.title)) && !defaultDataContent.includes(JSON.stringify(newEntry.scriptText))) {
+        const insertMarker = "export const DEFAULT_SCRIPTS: DefaultScript[] = [";
+        const markerIdx = defaultDataContent.indexOf(insertMarker);
+        if (markerIdx !== -1) {
+          const insertPos = markerIdx + insertMarker.length;
+          const updatedContent = defaultDataContent.substring(0, insertPos) + 
+            "\n  " + JSON.stringify(newEntry, null, 2) + "," + 
+            defaultDataContent.substring(insertPos);
+          fs.writeFileSync(defaultDataPath, updatedContent, "utf-8");
+          console.log(`Successfully added a new template entry with ID ${newId} to src/defaultData.ts`);
+        }
+      }
+    }
+
     return res.json({ 
       success: true, 
-      filePath: "src/data.ts", 
+      filePath: `src/data.ts`,
+      formattedFileName: `${camel}.ts`,
       savedAt: timestamp, 
       content 
     });
+
   } catch (error: any) {
     console.error("Failed to save storyboard data to filesystem:", error);
-    // Even if path is write-protected (e.g. read-only container), return of generated compilation code
-    // will still be provided so browser can download and display it.
     return res.json({ 
       success: false, 
-      error: "Không thể ghi trực tiếp vào tệp src/data.ts của máy chủ (có thể do phân quyền thư mục). Đã tự động kích hoạt tải xuống file data.ts trực tiếp từ trình duyệt.", 
+      error: "Không thể lưu tệp trực tiếp lên hệ sinh thái của máy chủ (phân quyền hoặc hết dung lượng), đã tự động tối ưu hóa và xuất file trực tiếp từ máy khách.", 
+      formattedFileName: `${camel}.ts`,
       content 
     });
+  }
+});
+
+// Endpoint 8: List all saved storyboards dynamically from /src/storyboards/
+app.get("/api/saved-storyboards", (req, res) => {
+  try {
+    const storyboardsDir = path.join(process.cwd(), "src", "storyboards");
+    if (!fs.existsSync(storyboardsDir)) {
+      return res.json({ storyboards: [] });
+    }
+    const files = fs.readdirSync(storyboardsDir);
+    const tsFiles = files.filter(f => f.endsWith(".ts"));
+    const storyboards = [];
+
+    for (const file of tsFiles) {
+      try {
+        const filePath = path.join(storyboardsDir, file);
+        const text = fs.readFileSync(filePath, "utf-8");
+        const startIdx = text.indexOf("export const SAVED_PROJECT_DATA: SavedProjectData = {");
+        const altStartIdx = text.indexOf("export const SAVED_PROJECT_DATA = {");
+        let startPos = -1;
+        if (startIdx !== -1) {
+          startPos = text.indexOf("{", startIdx);
+        } else if (altStartIdx !== -1) {
+          startPos = text.indexOf("{", altStartIdx);
+        }
+
+        if (startPos !== -1) {
+          const endPos = text.lastIndexOf("}");
+          if (endPos !== -1 && endPos > startPos) {
+            const jsonStr = text.substring(startPos, endPos + 1);
+            const parsed = new Function(`return ${jsonStr}`)();
+            if (parsed && parsed.globalBrief) {
+              storyboards.push({
+                fileName: file,
+                project: parsed
+              });
+            }
+          }
+        }
+      } catch (parseErr: any) {
+        console.error(`Error parsing storyboard file ${file}:`, parseErr);
+      }
+    }
+    return res.json({ storyboards });
+  } catch (err: any) {
+    console.error("Error reading saved-storyboards:", err);
+    return res.status(500).json({ error: err.message });
   }
 });
 

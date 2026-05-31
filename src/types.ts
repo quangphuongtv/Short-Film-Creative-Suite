@@ -26,6 +26,7 @@ export interface KeyElement {
   looks?: string[]; // different looks list
   imagePrompt?: string; // reference image prompt
   imageUrl?: string; // generated image URL
+  imageRef?: string; // corresponding reference image name
   isGenerating?: boolean;
 }
 
@@ -51,6 +52,7 @@ export interface StoryboardShot {
   videoPrompt?: string; // Motion-focused video prompt
   startFrameUrl?: string; // Reference image URL
   videoUrl?: string; // Mock or generated video representation URL
+  imageRef?: string; // corresponding reference image name
   isGeneratingStartFrame?: boolean;
   isGeneratingVideo?: boolean;
 }

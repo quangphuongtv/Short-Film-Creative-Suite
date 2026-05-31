@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { StoryboardShot, KeyElement, GlobalBrief } from '../types';
 import { handleResponse } from '../utils';
-import { Camera, Sparkles, RefreshCw, CheckCircle, ChevronRight, AlertCircle, Download, Copy, Check, Image as ImageIcon } from 'lucide-react';
+import { Camera, Sparkles, RefreshCw, CheckCircle, ChevronRight, AlertCircle, Download, Copy, Check, Image as ImageIcon, Upload } from 'lucide-react';
+import JSZip from 'jszip';
 
 interface StartFrameImageReviewProps {
   globalBrief: GlobalBrief;
@@ -15,6 +16,22 @@ export default function StartFrameImageReview({ globalBrief, shots, keyElements,
   const [localShots, setLocalShots] = useState<StoryboardShot[]>(shots);
   const [statusMap, setStatusMap] = useState<{ [id: string]: 'idle' | 'generating' | 'success' | 'failed' }>({});
   const [copiedStates, setCopiedStates] = useState<{[key: string]: boolean}>({});
+
+  const handleUploadLocalImage = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setLocalShots(prev => prev.map(shot => {
+        if (shot.id === id) {
+          return { ...shot, startFrameUrl: base64 };
+        }
+        return shot;
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Reference images of step 6 mapped to each shot ID
   const [attachedRefs, setAttachedRefs] = useState<{ [shotId: string]: string[] }>(() => {
@@ -154,6 +171,105 @@ export default function StartFrameImageReview({ globalBrief, shots, keyElements,
     }
   };
 
+  const [isZipping, setIsZipping] = useState(false);
+
+  // Convert Data URIs (Base64 PNG or Raw SVG code) into binary Blob data safely (resilient and asynchronous)
+  const dataURLtoBlob = async (dataurl: string): Promise<Blob> => {
+    try {
+      const res = await fetch(dataurl);
+      return await res.blob();
+    } catch (fetchErr) {
+      console.warn('Native fetch conversion of data URL failed, trying fallback manual parses:', fetchErr);
+      const parts = dataurl.split(',');
+      if (parts.length < 2) {
+        return new Blob([], { type: 'image/png' });
+      }
+      const mimeMatch = parts[0].match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+      const isBase64 = parts[0].indexOf('base64') >= 0;
+      
+      let payload = parts[1];
+      try {
+        payload = decodeURIComponent(payload);
+      } catch (e) {
+        // Safe ignore
+      }
+
+      if (isBase64) {
+        payload = payload.trim().replace(/\s/g, '').replace(/[^A-Za-z0-9+/=]/g, "");
+        while (payload.length % 4 !== 0) {
+          payload += '=';
+        }
+        try {
+          const bstr = atob(payload);
+          let n = bstr.length;
+          const u8arr = new Uint8Array(n);
+          while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+          }
+          return new Blob([u8arr], { type: mime });
+        } catch (bstrErr) {
+          console.error('All decode attempts failed:', bstrErr);
+          return new Blob([], { type: mime });
+        }
+      } else {
+        return new Blob([payload], { type: mime });
+      }
+    }
+  };
+
+  const handleDownloadAllZip = async () => {
+    const generatedShots = localShots.filter(shot => shot.startFrameUrl);
+    if (generatedShots.length === 0 || isZipping) return;
+
+    setIsZipping(true);
+    try {
+      const zip = new JSZip();
+      const shotsFolder = zip.folder("storyboard_shots");
+      
+      if (shotsFolder) {
+        for (const shot of localShots) {
+          if (shot.startFrameUrl && shot.startFrameUrl.startsWith("data:")) {
+            const url = shot.startFrameUrl;
+            const isSvg = url.startsWith("data:image/svg+xml");
+            const ext = isSvg ? "svg" : "png";
+            
+            try {
+              const blob = await dataURLtoBlob(url);
+              shotsFolder.file(`shot_${shot.id}.${ext}`, blob);
+            } catch (shotZipErr) {
+              console.warn(`Could not add scene shot frame ${shot.id} to zip:`, shotZipErr);
+            }
+          }
+        }
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      
+      const titleNormalized = (globalBrief.title || "storyboard")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/Đ/g, "D")
+        .replace(/[^a-zA-Z0-9]+/g, "_")
+        .toLowerCase();
+      
+      const zipFilename = `storyboard_${titleNormalized || 'shot_by_shot'}_images.zip`;
+      const zipUrl = URL.createObjectURL(zipBlob);
+      const zipLink = document.createElement("a");
+      zipLink.href = zipUrl;
+      zipLink.download = zipFilename;
+      document.body.appendChild(zipLink);
+      zipLink.click();
+      document.body.removeChild(zipLink);
+      URL.revokeObjectURL(zipUrl);
+    } catch (zipErr) {
+      console.error("Could not bundle or download storyboard shots ZIP package:", zipErr);
+    } finally {
+      setIsZipping(false);
+    }
+  };
+
   const handleGenerateAll = async () => {
     const missing = localShots.filter(shot => !shot.startFrameUrl);
     for (const shot of missing) {
@@ -222,6 +338,8 @@ export default function StartFrameImageReview({ globalBrief, shots, keyElements,
     handleUpdatePromptInReview(id, fullFluentPrompt.trim().replace(/\s+/g, ' '));
   };
 
+  const hasAnyGeneratedImage = localShots.some(shot => shot.startFrameUrl);
+
   return (
     <div className="bg-[#0B0F19] rounded-xl border border-slate-800 shadow-xl overflow-hidden p-6 hover:shadow-cyan-950/20 transition-all duration-300">
       <div className="border-b border-slate-800 pb-4 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -235,12 +353,35 @@ export default function StartFrameImageReview({ globalBrief, shots, keyElements,
           </p>
         </div>
 
-        <button
-          onClick={handleGenerateAll}
-          className="py-1.5 px-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-600 hover:to-indigo-700 text-white text-xs font-mono font-bold rounded shadow flex items-center gap-1.5 cursor-pointer active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)]"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-white" /> Vẽ Hàng Loạt Tất Cả Cận Cảnh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={handleGenerateAll}
+            className="py-1.5 px-3 bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-600 hover:to-indigo-700 text-white text-xs font-mono font-bold rounded shadow flex items-center gap-1.5 cursor-pointer active:scale-[0.98] transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-white" /> Vẽ Hàng Loạt Tất Cả Cận Cảnh
+          </button>
+
+          <button
+            onClick={handleDownloadAllZip}
+            disabled={!hasAnyGeneratedImage || isZipping}
+            className={`py-1.5 px-3 border text-xs font-mono font-bold rounded shadow flex items-center gap-1.5 cursor-pointer active:scale-[0.98] transition-all ${
+              !hasAnyGeneratedImage || isZipping
+                ? 'border-slate-800 text-slate-500 bg-slate-900 pointer-events-none opacity-50'
+                : 'border-emerald-600 hover:border-emerald-500 bg-emerald-950/20 hover:bg-emerald-950/40 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+            }`}
+          >
+            {isZipping ? (
+              <>
+                <div className="w-3.5 h-3.5 rounded-full border border-t-transparent border-emerald-400 animate-spin" />
+                Đang nén ZIP...
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" /> Tải về Tất cả (.zip)
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="p-4 bg-[#0F172A] border border-cyan-900/60 rounded-lg text-xs text-cyan-300 mb-6 flex items-start gap-2.5">
@@ -436,27 +577,40 @@ export default function StartFrameImageReview({ globalBrief, shots, keyElements,
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-1 border-t border-slate-800 pt-3 mt-1 bg-[#0E1520]/20">
-                  <button
-                    disabled={isGenerating}
-                    onClick={() => handleGenerateStartFrame(shot.id, shot.startFramePrompt)}
-                    className={`flex-1 py-1.5 px-2.5 rounded font-mono text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 transition-all cursor-pointer ${
-                      isGenerating
-                        ? 'bg-slate-900 border border-slate-800 text-slate-500'
-                        : 'bg-[#131924] hover:bg-cyan-950/40 text-slate-200 hover:text-cyan-400 border border-slate-700'
-                    }`}
-                  >
-                    {isGenerating ? (
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Camera className="w-3 h-3" />
-                    )}
-                    <span>{shot.startFrameUrl ? 'Vẽ Lại AI' : 'Vẽ Frame Đầu'}</span>
-                  </button>
+                <div className="flex flex-col gap-1.5 border-t border-slate-800 pt-3 mt-1 bg-[#0E1520]/20">
+                  <div className="flex items-center space-x-1.5">
+                    <button
+                      disabled={isGenerating}
+                      onClick={() => handleGenerateStartFrame(shot.id, shot.startFramePrompt)}
+                      className={`flex-1 py-1.5 px-2.5 rounded font-mono text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                        isGenerating
+                          ? 'bg-slate-900 border border-slate-800 text-slate-500'
+                          : 'bg-[#131924] hover:bg-cyan-950/40 text-slate-200 hover:text-cyan-400 border border-slate-700'
+                      }`}
+                    >
+                      {isGenerating ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Camera className="w-3 h-3" />
+                      )}
+                      <span>{shot.startFrameUrl ? 'Vẽ Lại AI' : 'Vẽ Frame Đầu'}</span>
+                    </button>
+
+                    <label className="flex-1 py-1.5 px-2 bg-[#131924] hover:bg-emerald-950/40 text-slate-200 hover:text-emerald-400 border border-slate-700 hover:border-emerald-700 rounded font-mono text-[10px] font-bold uppercase tracking-wider flex items-center justify-center space-x-1 transition-all cursor-pointer">
+                      <Upload className="w-3 h-3" />
+                      <span>Chọn ảnh local</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleUploadLocalImage(shot.id, e)}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
 
                   {shot.startFrameUrl && (
-                    <span className="p-1 text-cyan-400 bg-cyan-950/40 rounded border border-cyan-800/60" title="Đã có ảnh frame khởi đầu">
-                      <CheckCircle className="w-4.5 h-4.5" />
+                    <span className="py-1 px-3 text-[10.5px] text-center font-mono font-bold text-cyan-400 bg-cyan-950/30 border border-cyan-800/60 rounded flex items-center justify-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" /> Đã Khóa Frame Đầu
                     </span>
                   )}
                 </div>

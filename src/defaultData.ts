@@ -75,31 +75,6 @@ RAIN
 "Tôi đã đến tọa độ X-12. Phố Chợ Đen ẩm ướt và hỗn loạn quá mức dự tính. Chưa thấy liên lạc viên của tập đoàn Arasaka."
 
 Từ trong lối nhỏ ẩm ước phía sau tiệm mì ăn liền bốc khói, một bóng dáng khoác áo măng tô da bò đội mũ sụp sâu tiến tới. Gương mặt người đó ẩn sau chiếc mặt nạ kỹ thuật số phát sáng hai chữ song song: "DANGER / NGUY HIỂM".`
-  },
-  {
-    id: "Giong_Legend",
-    title: "Sự tích Thánh Gióng",
-    genre: "3D Animation",
-    brief: "Ở một ngôi làng, một cậu bé 3 tuổi không biết nói. Sau khi nghe triều đình thông cầu nhân tài ra giúp nước đánh giặc, cậu bé bỗng lớn nhanh thành tráng sĩ, ra sa trường diệt giặc",
-    scriptText: `NGOẠI THẤT. NGÔI LÀNG PHÙ ĐỔNG - BAN NGÀY
-
-Cảnh sắc làng quê Việt cổ bình yên dưới chân núi với rặng tre xanh ngắt.
-
-Người mẹ già mặc áo tứ thân nâu đất dọn dẹp trước mái nhà tranh dột nát. Cạnh hiên nhà, cậu bé Gióng (3 tuổi, bụ bẫm, mắt ngời sáng) nằm im lìm trên chõng tre, không nói không cười.
-
-Tiếng loa rao của sứ giả từ phía xa dội lại khẩn thiết.
-
-SỨ GIẢ (OFF-SCREEN)
-"Giặc Ân bạo tàn xâm lấn nước ta! Đức Vua cầu tìm nhân tài ra sức dẹp loạn giúp giang sơn!"
-
-Mẹ Gióng quay vào nhà, nhìn con thở dài đầy lo lắng, nước mắt lăn dài. Cậu bé Gióng nghe tiếng loa bỗng nhiên nhảy bật ngồi dậy, mắt sáng rực như có ánh lôi điện phi thường, cất lời nói đầu tiên dõng dạc.
-
-CẬU BÉ GIÓNG
-"Mẹ ra mời sứ giả nhà vua vào đây cho con thưa chuyện!"
-
-Sứ giả mặc hoàng y oai vệ bước vào túp lều tranh rách nát. Gióng đứng trước sứ giả, vươn vai một cái liền biến hóa thành một vị thần tướng oai phong lẫm liệt, tầm vóc cao lớn vượt bậc, cơ bập tráng kiện phi thường.
-
-TRÁNG SĨ GIÓNG
-"Mau về tâu lại Hoàng Thượng rèn cho ta ngựa sắt, gươm sắt, giáp sắt và nón sắt! Ta sẽ cưỡi gió đại phá quân xâm lược!"`
   }
+
 ];

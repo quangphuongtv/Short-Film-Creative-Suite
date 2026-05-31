@@ -3,7 +3,7 @@ import { DEFAULT_SCRIPTS, DefaultScript } from '../defaultData';
 import { ProjectState, GlobalBrief } from '../types';
 import { handleResponse } from '../utils';
 import { SAVED_PROJECT_DATA } from '../data';
-import { Sparkles, ArrowRight, Video, Languages, HelpCircle, Save } from 'lucide-react';
+import { Sparkles, ArrowRight, Video, Languages, HelpCircle, Save, Upload } from 'lucide-react';
 
 interface ScriptInputProps {
   onScriptParsed: (parsedData: { globalBrief: GlobalBrief; scenes: any[]; isFallback?: boolean }) => void;
@@ -11,36 +11,128 @@ interface ScriptInputProps {
 }
 
 export default function ScriptInput({ onScriptParsed, onLoadSavedProject }: ScriptInputProps) {
+  const [projectTitle, setProjectTitle] = useState(() => {
+    if (SAVED_PROJECT_DATA && typeof SAVED_PROJECT_DATA === 'object' && (SAVED_PROJECT_DATA as any).globalBrief?.title) {
+      return (SAVED_PROJECT_DATA as any).globalBrief.title;
+    }
+    return '';
+  });
   const [scriptText, setScriptText] = useState('');
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [visualStyle, setVisualStyle] = useState('3D Pixar');
   const [language, setLanguage] = useState('English');
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedStoryboards, setSavedStoryboards] = useState<{ fileName: string; project: any }[]>([]);
 
-  const selectPreset = (preset: DefaultScript & { isSavedProject?: boolean }) => {
-    if (preset.isSavedProject && SAVED_PROJECT_DATA) {
+  React.useEffect(() => {
+    let active = true;
+    const fetchSavedStoryboards = async (retries = 3, delay = 1000) => {
+      try {
+        const res = await fetch('/api/saved-storyboards');
+        const data = await handleResponse<{ storyboards: any[] }>(res);
+        if (active && data && Array.isArray(data.storyboards)) {
+          setSavedStoryboards(data.storyboards);
+        }
+      } catch (err: any) {
+        if (retries > 0) {
+          console.warn(`Saved storyboards fetch failed, retrying in ${delay}ms... (Retries left: ${retries - 1})`, err);
+          setTimeout(() => {
+            if (active) fetchSavedStoryboards(retries - 1, delay * 2);
+          }, delay);
+        } else {
+          console.error("Error loading saved storyboards from src/storyboards/", err);
+        }
+      }
+    };
+
+    fetchSavedStoryboards();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      try {
+        const startIndex = content.indexOf('{');
+        const endIndex = content.lastIndexOf('}');
+        if (startIndex === -1 || endIndex === -1) {
+          throw new Error("Không tìm thấy dữ liệu kịch bản hợp lệ trong file .ts. Vui lòng chọn đúng file .ts đã xuất.");
+        }
+        const rawObjStr = content.substring(startIndex, endIndex + 1);
+        const data = new Function(`return (${rawObjStr})`)();
+        
+        if (data && typeof data === 'object' && data.globalBrief) {
+          if (onLoadSavedProject) {
+            onLoadSavedProject(data);
+          }
+          setError(null);
+        } else {
+          throw new Error("Cấu trúc file không đúng định dạng SAVED_PROJECT_DATA.");
+        }
+      } catch (err: any) {
+        console.error(err);
+        setError(`Lỗi mở file kịch bản: ${err.message}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const selectPreset = (preset: DefaultScript & { isSavedProject?: boolean; projectData?: any }) => {
+    if (preset.isSavedProject && preset.projectData) {
       if (onLoadSavedProject) {
-        onLoadSavedProject(SAVED_PROJECT_DATA);
+        onLoadSavedProject(preset.projectData);
       }
       return;
     }
     setScriptText(preset.scriptText);
+    if (preset.title) {
+      setProjectTitle(preset.title);
+    }
     setError(null);
   };
 
-  const allScripts = [...DEFAULT_SCRIPTS];
+  const allScripts: any[] = [];
+
+  // 1. Fallback static SAVED_PROJECT_DATA first if it exists, designating it as the absolute primary restore card
   const hasSavedData = SAVED_PROJECT_DATA && typeof SAVED_PROJECT_DATA === 'object' && (SAVED_PROJECT_DATA as any).globalBrief?.title;
   if (hasSavedData) {
-    allScripts.unshift({
+    const mainTitle = (SAVED_PROJECT_DATA as any).globalBrief.title;
+    allScripts.push({
       id: "saved_project",
-      title: `${(SAVED_PROJECT_DATA as any).globalBrief.title} (Bản lưu hệ thống 💾)`,
+      title: `(Bản lưu hệ thống 💾) ${mainTitle}`,
       genre: (SAVED_PROJECT_DATA as any).globalBrief.genre || '3D Animation',
-      brief: "Nhấp để khôi phục toàn bộ tiến trình, kịch bản, và hình ảnh đã lưu trong file data.ts",
+      brief: "Một cú nhấp chuột khôi phục trọn vẹn toàn bộ tiến trình, kịch bản, bối cảnh, thực thể và storyboard cũ từ data.ts.",
       scriptText: (SAVED_PROJECT_DATA as any).globalBrief.scriptText || '',
-      isSavedProject: true
-    } as any);
+      isSavedProject: true,
+      projectData: SAVED_PROJECT_DATA
+    });
   }
+
+  // 2. Add all system storyboards from the dynamically loaded array, avoiding duplication of the primary restore card
+  savedStoryboards.forEach((item, index) => {
+    if (hasSavedData && item.project?.globalBrief?.title === (SAVED_PROJECT_DATA as any).globalBrief.title) {
+      return; // Skip duplicate showing since we already added it at the absolute top
+    }
+    allScripts.push({
+      id: `system_saved_${item.fileName}_${index}`,
+      title: `(Bản lưu hệ thống 💾) ${item.project.globalBrief?.title || item.fileName.replace('.ts', '')}`,
+      genre: item.project.globalBrief?.genre || '3D Animation',
+      brief: `Một cú nhấp chuột khôi phục trọn vẹn toàn bộ tiến trình, kịch bản, bối cảnh, thực thể và storyboard cũ từ /src/storyboards/${item.fileName}.`,
+      scriptText: item.project.globalBrief?.scriptText || '',
+      isSavedProject: true,
+      projectData: item.project
+    });
+  });
+
+  // 3. Add default preset templates
+  allScripts.push(...DEFAULT_SCRIPTS);
 
   const handleParse = async () => {
     if (!scriptText.trim()) {
@@ -73,7 +165,7 @@ export default function ScriptInput({ onScriptParsed, onLoadSavedProject }: Scri
 
       onScriptParsed({
         globalBrief: {
-          title: data.title || 'Phim Ngắn Chưa Đặt Tên',
+          title: projectTitle.trim() || data.title || 'Phim Ngắn Chưa Đặt Tên',
           genre: data.genre || 'Drama',
           aspectRatio: data.aspectRatio || aspectRatio,
           visualStyle: data.visualStyle || visualStyle,
@@ -96,14 +188,29 @@ export default function ScriptInput({ onScriptParsed, onLoadSavedProject }: Scri
 
   return (
     <div className="bg-[#0B0F19] rounded-xl border border-slate-800 shadow-xl overflow-hidden p-6">
-      <div className="border-b border-slate-800 pb-4 mb-6">
-        <h2 className="text-lg font-extrabold text-white tracking-wide uppercase font-mono flex items-center gap-2">
-          <span className="inline-block w-2.5 h-6 bg-cyan-500 rounded-sm"></span>
-          HỒ SƠ KHỞI TẠO DỰ ÁN (GLOBAL BRIEF)
-        </h2>
-        <p className="text-xs text-slate-400 font-mono mt-1">
-          BƯỚC 1: Cung cấp kịch bản hoặc dàn ý câu chuyện để AI phân tách phân cảnh.
-        </p>
+      <div className="border-b border-slate-800 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-extrabold text-white tracking-wide uppercase font-mono flex items-center gap-2">
+            <span className="inline-block w-2.5 h-6 bg-cyan-500 rounded-sm"></span>
+            HỒ SƠ KHỞI TẠO DỰ ÁN (GLOBAL BRIEF)
+          </h2>
+          <p className="text-xs text-slate-400 font-mono mt-1">
+            BƯỚC 1: Cung cấp kịch bản hoặc dàn ý câu chuyện để AI phân tách phân cảnh.
+          </p>
+        </div>
+
+        <div className="flex items-center">
+          <label className="flex items-center gap-2 py-2 px-4 bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 hover:text-emerald-100 border border-emerald-800/80 hover:border-emerald-700 rounded-lg font-mono text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+            <Upload className="w-4 h-4" />
+            <span>Tải Kịch bản (.ts)</span>
+            <input
+              type="file"
+              accept=".ts,.js,.json"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </label>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -111,7 +218,23 @@ export default function ScriptInput({ onScriptParsed, onLoadSavedProject }: Scri
         <div className="lg:col-span-2 space-y-4">
           <div>
             <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-300 mb-1.5">
-              Nội dung kịch bản phim nhắn / Dàn ý hội thoại
+              Tên dự án (Project Name)
+            </label>
+            <input
+              type="text"
+              className="w-full p-2.5 bg-[#111827] border border-slate-700 rounded-lg font-sans text-sm text-[#F1F5F9] placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all"
+              placeholder="Nhập tên dự án hoặc tên phim của bạn (Ví dụ: Chuyến tàu cuối cùng)..."
+              value={projectTitle}
+              onChange={(e) => {
+                setProjectTitle(e.target.value);
+                if (error) setError(null);
+              }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-mono font-bold uppercase tracking-wider text-slate-300 mb-1.5">
+              Nội dung kịch bản phim ngắn / Dàn ý hội thoại
             </label>
             <textarea
               className="w-full h-80 p-4 bg-[#111827] border border-slate-705 border-slate-700 rounded-lg font-sans text-sm text-[#F1F5F9] placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 resize-none transition-all"
@@ -133,25 +256,25 @@ export default function ScriptInput({ onScriptParsed, onLoadSavedProject }: Scri
               {allScripts.map((preset) => {
                 const isSaved = (preset as any).isSavedProject;
                 return (
-                  <button
+                   <button
                     type="button"
                     key={preset.id}
                     onClick={() => selectPreset(preset)}
-                    className={`p-3 text-left border rounded-lg transition-all cursor-pointer group ${
+                    className={`p-4 text-left border rounded-lg transition-all cursor-pointer group relative overflow-hidden ${
                       isSaved
-                        ? 'border-emerald-500/60 bg-emerald-950/20 hover:bg-emerald-950/30 hover:border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                        ? 'border-emerald-500/80 bg-emerald-950/20 bg-[repeating-linear-gradient(45deg,rgba(16,185,129,0.06),rgba(16,185,129,0.06)_3px,transparent_3px,transparent_9px)] hover:bg-emerald-950/30 hover:border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
                         : 'border-slate-800 bg-[#0F1722]/50 hover:bg-[#1E293B]/60 hover:border-cyan-800'
                     }`}
                   >
                     <h4 className={`text-xs font-bold transition-colors ${
-                      isSaved ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-slate-200 group-hover:text-cyan-400'
+                      isSaved ? 'text-emerald-300 group-hover:text-emerald-100 font-mono tracking-wide' : 'text-slate-200 group-hover:text-cyan-400'
                     }`}>
                       {preset.title}
                     </h4>
-                    <p className={`text-[10px] font-mono mt-1 ${isSaved ? 'text-emerald-400' : 'text-cyan-400/80'}`}>
+                    <p className={`text-[10px] font-mono mt-1 ${isSaved ? 'text-emerald-400 font-bold uppercase tracking-wider' : 'text-cyan-400/80'}`}>
                       {preset.genre}
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">
+                    <p className={`text-[11px] mt-1.5 line-clamp-2 ${isSaved ? 'text-emerald-200/80' : 'text-slate-400'}`}>
                       {preset.brief}
                     </p>
                   </button>
